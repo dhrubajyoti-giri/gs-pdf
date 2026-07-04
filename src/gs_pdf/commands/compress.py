@@ -136,13 +136,17 @@ def _try_compress(
 
 
 def _build_target_opts(jpeg_quality: int, extra_args: list[str]) -> list[str]:
-    """Build compress options for a given JPEG quality, matching normal defaults."""
+    """Build compress options for a given JPEG quality.
+
+    Uses prepress preset (gentlest) without forced downsampling.
+    JPEG quality is the primary size control — higher = larger output.
+    """
     return _build_standard_opts(
-        preset=GsQualityPreset.DEFAULT,
+        preset=GsQualityPreset.PREPRESS,
         resolution=150,
         jpeg_quality=jpeg_quality,
-        color_image_resolution=150,
-        gray_image_resolution=150,
+        color_image_resolution=300,
+        gray_image_resolution=300,
         mono_image_resolution=300,
         color_image_filter=GsImageFilter.DCT,
         gray_image_filter=GsImageFilter.DCT,
@@ -163,7 +167,7 @@ def _build_target_opts(jpeg_quality: int, extra_args: list[str]) -> list[str]:
         compatibility_level=GsCompatibilityLevel.V1_7,
         grayscale=False,
         lossless=False,
-        downsample_images=True,
+        downsample_images=False,
         extra_args=extra_args,
     )
 
@@ -176,8 +180,9 @@ def _find_for_target(
 ) -> tuple[list[str], int | None]:
     """Binary-search JPEG quality to find settings closest to target_bytes.
 
-    Varies -dJPEGQ (1-100) while keeping resolution fixed at 150 DPI.
-    Returns the settings that produced output closest to target.
+    Uses prepress preset (gentlest) without forced downsampling.
+    JPEGQ (1-100) is the primary size control — lower = smaller.
+    Returns settings closest to target.
     """
     tmpdir = Path(tempfile.mkdtemp(prefix="gs_pdf_size_"))
     lo, hi = 1, 100
@@ -235,7 +240,7 @@ def _compress_to_target(
     extra_args: list[str],
     ctx: typer.Context,
 ) -> None:
-    """Iterate compression presets to hit a target file size."""
+    """Binary-search JPEG quality to hit a target file size."""
     target_bytes = _parse_size(target_size)
     input_size = input.stat().st_size
 
