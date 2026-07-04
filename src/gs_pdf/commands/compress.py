@@ -18,6 +18,91 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+GS_FILTER_NAMES: dict[GsImageFilter, str] = {
+    GsImageFilter.DCT: "DCTEncode",
+    GsImageFilter.FLATE: "FlateEncode",
+    GsImageFilter.JPX: "JPXEncode",
+    GsImageFilter.CCITT: "CCITTFaxEncode",
+}
+
+
+def _build_standard_opts(
+    preset: GsQualityPreset,
+    resolution: int,
+    color_image_resolution: int,
+    gray_image_resolution: int,
+    mono_image_resolution: int,
+    color_image_filter: GsImageFilter,
+    gray_image_filter: GsImageFilter,
+    mono_image_filter: GsImageFilter,
+    auto_filter_color: bool,
+    auto_filter_gray: bool,
+    auto_filter_mono: bool,
+    embed_fonts: bool,
+    subset_fonts: bool,
+    compress_fonts: bool,
+    compress_pages: bool,
+    linearize: bool,
+    detect_duplicates: bool,
+    preserve_metadata: bool,
+    preserve_annotations: bool,
+    preserve_forms: bool,
+    color_conversion_strategy: str,
+    compatibility_level: GsCompatibilityLevel,
+    grayscale: bool,
+    lossless: bool,
+    downsample_images: bool,
+    extra_args: list[str],
+) -> list[str]:
+    """Build standard Ghostscript pdfwrite options matching the compress command defaults."""
+    opts: list[str] = [
+        f"-dPDFSETTINGS=/{preset.value}",
+        f"-r{resolution}",
+    ]
+
+    if downsample_images or lossless:
+        opts.append(f"-dDownsampleColorImages={str(not lossless).lower()}")
+        opts.append(f"-dDownsampleGrayImages={str(not lossless).lower()}")
+        opts.append(f"-dDownsampleMonoImages={str(not lossless).lower()}")
+        if not lossless:
+            opts.append(f"-dColorImageResolution={color_image_resolution}")
+            opts.append(f"-dGrayImageResolution={gray_image_resolution}")
+            opts.append(f"-dMonoImageResolution={mono_image_resolution}")
+
+    if lossless:
+        opts.append("-dColorImageFilter=/FlateEncode")
+        opts.append("-dGrayImageFilter=/FlateEncode")
+        opts.append("-dMonoImageFilter=/CCITTFaxEncode")
+    else:
+        opts.append(f"-dColorImageFilter=/{GS_FILTER_NAMES[color_image_filter]}")
+        opts.append(f"-dGrayImageFilter=/{GS_FILTER_NAMES[gray_image_filter]}")
+        opts.append(f"-dMonoImageFilter=/{GS_FILTER_NAMES[mono_image_filter]}")
+
+    opts.append(f"-dAutoFilterColorImages={str(auto_filter_color).lower()}")
+    opts.append(f"-dAutoFilterGrayImages={str(auto_filter_gray).lower()}")
+    opts.append(f"-dAutoFilterMonoImages={str(auto_filter_mono).lower()}")
+    opts.append(f"-dEmbedAllFonts={str(embed_fonts).lower()}")
+    opts.append(f"-dSubsetFonts={str(subset_fonts).lower()}")
+    opts.append(f"-dCompressFonts={str(compress_fonts).lower()}")
+    opts.append(f"-dCompressPages={str(compress_pages).lower()}")
+    opts.append(f"-dDetectDuplicateImages={str(detect_duplicates).lower()}")
+    if linearize:
+        opts.append("-dOptimize=true")
+    opts.append(f"-dPreserveMetadata={str(preserve_metadata).lower()}")
+    opts.append(f"-dPreserveAnnots={str(preserve_annotations).lower()}")
+    opts.append(f"-dPreserveForm={str(preserve_forms).lower()}")
+    opts.append(f"-sColorConversionStrategy={color_conversion_strategy}")
+    opts.append(f"-dCompatibilityLevel={compatibility_level.value}")
+    if grayscale:
+        opts.append("-sProcessColorModel=DeviceGray")
+        opts.append("-dColorConversionStrategy=/Gray")
+    if lossless:
+        opts.append("-dColorImageDownsampleType=/Bicubic")
+        opts.append("-dGrayImageDownsampleType=/Bicubic")
+
+    return opts + extra_args
+
+
 def _parse_size(value: str) -> int:
     """Parse a human-readable size string (e.g. '500KB', '2MB', '1.5MB') into bytes."""
     value = value.strip().upper()
@@ -47,30 +132,35 @@ def _try_compress(
 
 
 def _build_target_opts(resolution: int, extra_args: list[str]) -> list[str]:
-    """Build Ghostscript options for a given resolution (no presets)."""
-    return [
-        f"-r{resolution}",
-        "-dDownsampleColorImages=true",
-        "-dDownsampleGrayImages=true",
-        "-dDownsampleMonoImages=true",
-        "-dColorImageResolution=0",
-        "-dGrayImageResolution=0",
-        "-dMonoImageResolution=0",
-        "-dColorImageDownsampleType=/Bicubic",
-        "-dGrayImageDownsampleType=/Bicubic",
-        "-dMonoImageDownsampleType=/Subsample",
-        "-dColorImageFilter=/DCTEncode",
-        "-dGrayImageFilter=/DCTEncode",
-        "-dMonoImageFilter=/CCITTFaxEncode",
-        "-dAutoFilterColorImages=false",
-        "-dAutoFilterGrayImages=false",
-        "-dAutoFilterMonoImages=false",
-        "-dEmbedAllFonts=true",
-        "-dSubsetFonts=true",
-        "-dCompressFonts=true",
-        "-dCompressPages=true",
-        "-dDetectDuplicateImages=true",
-    ] + extra_args
+    """Build compress options for a given resolution, matching normal defaults."""
+    return _build_standard_opts(
+        preset=GsQualityPreset.DEFAULT,
+        resolution=resolution,
+        color_image_resolution=resolution,
+        gray_image_resolution=resolution,
+        mono_image_resolution=max(resolution, 300),
+        color_image_filter=GsImageFilter.DCT,
+        gray_image_filter=GsImageFilter.DCT,
+        mono_image_filter=GsImageFilter.CCITT,
+        auto_filter_color=True,
+        auto_filter_gray=True,
+        auto_filter_mono=True,
+        embed_fonts=True,
+        subset_fonts=True,
+        compress_fonts=True,
+        compress_pages=True,
+        linearize=False,
+        detect_duplicates=True,
+        preserve_metadata=True,
+        preserve_annotations=True,
+        preserve_forms=True,
+        color_conversion_strategy="LeaveColorUnchanged",
+        compatibility_level=GsCompatibilityLevel.V1_7,
+        grayscale=False,
+        lossless=False,
+        downsample_images=True,
+        extra_args=extra_args,
+    )
 
 
 def _find_for_target(
@@ -319,76 +409,37 @@ def cmd(
         _compress_to_target(gs_path, timeout, input, output, target_size, extra_args, ctx)
         return
 
-    # Build options dict for pdfwrite device
-    opts: list[str] = [
-        f"-dPDFSETTINGS=/{preset.value}",
-        f"-r{resolution}",
-    ]
-
-    # Image downsampling
-    if downsample_images or lossless:
-        opts.append(f"-dDownsampleColorImages={str(not lossless).lower()}")
-        opts.append(f"-dDownsampleGrayImages={str(not lossless).lower()}")
-        opts.append(f"-dDownsampleMonoImages={str(not lossless).lower()}")
-        if not lossless:
-            opts.append(f"-dColorImageResolution={color_image_resolution}")
-            opts.append(f"-dGrayImageResolution={gray_image_resolution}")
-            opts.append(f"-dMonoImageResolution={mono_image_resolution}")
-
-    # Image filters
-    GS_FILTER_NAMES: dict[GsImageFilter, str] = {
-        GsImageFilter.DCT: "DCTEncode",
-        GsImageFilter.FLATE: "FlateEncode",
-        GsImageFilter.JPX: "JPXEncode",
-        GsImageFilter.CCITT: "CCITTFaxEncode",
-    }
-
-    if lossless:
-        opts.append("-dColorImageFilter=/FlateEncode")
-        opts.append("-dGrayImageFilter=/FlateEncode")
-        opts.append("-dMonoImageFilter=/CCITTFaxEncode")
-    else:
-        opts.append(f"-dColorImageFilter=/{GS_FILTER_NAMES[color_image_filter]}")
-        opts.append(f"-dGrayImageFilter=/{GS_FILTER_NAMES[gray_image_filter]}")
-        opts.append(f"-dMonoImageFilter=/{GS_FILTER_NAMES[mono_image_filter]}")
-
-    # Auto filter
-    opts.append(f"-dAutoFilterColorImages={str(auto_filter_color).lower()}")
-    opts.append(f"-dAutoFilterGrayImages={str(auto_filter_gray).lower()}")
-    opts.append(f"-dAutoFilterMonoImages={str(auto_filter_mono).lower()}")
-
-    # Fonts
-    opts.append(f"-dEmbedAllFonts={str(embed_fonts).lower()}")
-    opts.append(f"-dSubsetFonts={str(subset_fonts).lower()}")
-    opts.append(f"-dCompressFonts={str(compress_fonts).lower()}")
-
-    # Pages
-    opts.append(f"-dCompressPages={str(compress_pages).lower()}")
-
-    # Optimization
-    opts.append(f"-dDetectDuplicateImages={str(detect_duplicates).lower()}")
-    if linearize:
-        opts.append("-dOptimize=true")
-
-    # Preservation
-    opts.append(f"-dPreserveMetadata={str(preserve_metadata).lower()}")
-    opts.append(f"-dPreserveAnnots={str(preserve_annotations).lower()}")
-    opts.append(f"-dPreserveForm={str(preserve_forms).lower()}")
-
-    # Color
-    opts.append(f"-sColorConversionStrategy={color_conversion_strategy}")
-    opts.append(f"-dCompatibilityLevel={compatibility_level.value}")
-    if grayscale:
-        opts.append("-sProcessColorModel=DeviceGray")
-        opts.append("-dColorConversionStrategy=/Gray")
-
-    # Apply lossless overrides last
-    if lossless:
-        opts.append("-dColorImageDownsampleType=/Bicubic")
-        opts.append("-dGrayImageDownsampleType=/Bicubic")
+    opts = _build_standard_opts(
+        preset=preset,
+        resolution=resolution,
+        color_image_resolution=color_image_resolution,
+        gray_image_resolution=gray_image_resolution,
+        mono_image_resolution=mono_image_resolution,
+        color_image_filter=color_image_filter,
+        gray_image_filter=gray_image_filter,
+        mono_image_filter=mono_image_filter,
+        auto_filter_color=auto_filter_color,
+        auto_filter_gray=auto_filter_gray,
+        auto_filter_mono=auto_filter_mono,
+        embed_fonts=embed_fonts,
+        subset_fonts=subset_fonts,
+        compress_fonts=compress_fonts,
+        compress_pages=compress_pages,
+        linearize=linearize,
+        detect_duplicates=detect_duplicates,
+        preserve_metadata=preserve_metadata,
+        preserve_annotations=preserve_annotations,
+        preserve_forms=preserve_forms,
+        color_conversion_strategy=color_conversion_strategy,
+        compatibility_level=compatibility_level,
+        grayscale=grayscale,
+        lossless=lossless,
+        downsample_images=downsample_images,
+        extra_args=extra_args,
+    )
 
     engine = GsEngine(gs_path=gs_path, timeout=timeout)
-    args = engine.build_args("pdfwrite", [input], str(output), opts + extra_args)
+    args = engine.build_args("pdfwrite", [input], str(output), opts)
 
     if ctx.obj.get("verbose"):
         console.print(f"[dim]Running: {' '.join(args)}[/dim]")
