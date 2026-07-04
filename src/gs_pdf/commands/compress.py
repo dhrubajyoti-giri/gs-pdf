@@ -46,57 +46,84 @@ def _try_compress(
     return None
 
 
+def _build_target_opts(resolution: int, extra_args: list[str]) -> list[str]:
+    """Build Ghostscript options for a given resolution (no presets)."""
+    return [
+        f"-r{resolution}",
+        "-dDownsampleColorImages=true",
+        "-dDownsampleGrayImages=true",
+        "-dDownsampleMonoImages=true",
+        "-dColorImageResolution=0",
+        "-dGrayImageResolution=0",
+        "-dMonoImageResolution=0",
+        "-dColorImageDownsampleType=/Bicubic",
+        "-dGrayImageDownsampleType=/Bicubic",
+        "-dMonoImageDownsampleType=/Subsample",
+        "-dColorImageFilter=/DCTEncode",
+        "-dGrayImageFilter=/DCTEncode",
+        "-dMonoImageFilter=/CCITTFaxEncode",
+        "-dAutoFilterColorImages=false",
+        "-dAutoFilterGrayImages=false",
+        "-dAutoFilterMonoImages=false",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dCompressFonts=true",
+        "-dCompressPages=true",
+        "-dDetectDuplicateImages=true",
+    ] + extra_args
+
+
 def _find_for_target(
     engine: GsEngine,
     input_path: Path,
     target_bytes: int,
     extra_args: list[str],
 ) -> tuple[list[str], int | None]:
-    """Iterate compression presets to find settings that fit under target_bytes.
+    """Binary-search resolution to find settings closest to target_bytes.
 
-    Returns (best_opts, best_size) — the highest quality settings that produce
-    output ≤ target.  If nothing fits, returns the smallest output found.
+    Varies only the resolution (-r flag) between 72 and 600 DPI.
+    Returns the settings that produced output closest to (but at or under) target.
     """
-    tiers: list[tuple[GsQualityPreset, list[int]]] = [
-        (GsQualityPreset.PREPRESS,[300, 200, 150]),
-        (GsQualityPreset.PRINTER, [300, 200, 150]),
-        (GsQualityPreset.DEFAULT, [300, 200, 150, 100]),
-        (GsQualityPreset.EBOOK,   [200, 150, 100, 72]),
-        (GsQualityPreset.SCREEN,  [200, 150, 100, 72]),
-    ]
-
     tmpdir = Path(tempfile.mkdtemp(prefix="gs_pdf_size_"))
+    lo, hi = 72, 600
     best_opts: list[str] | None = None
     best_size: int | None = None
+    best_diff: float | None = None
+    TARGET_TOLERANCE = int(target_bytes * 0.05)
 
     try:
-        for preset, resolutions in tiers:
-            for res in resolutions:
-                opts: list[str] = [
-                    f"-dPDFSETTINGS=/{preset.value}",
-                    f"-r{res}",
-                    "-dDownsampleColorImages=true",
-                    "-dDownsampleGrayImages=true",
-                    "-dDownsampleMonoImages=true",
-                    "-dEmbedAllFonts=true",
-                    "-dSubsetFonts=true",
-                    "-dCompressFonts=true",
-                    "-dCompressPages=true",
-                    "-dDetectDuplicateImages=true",
-                ] + extra_args
+        for _ in range(10):
+            mid = (lo + hi) // 2
+            opts = _build_target_opts(mid, extra_args)
+            out = tmpdir / f"r{mid}.pdf"
+            size = _try_compress(engine, input_path, out, opts)
 
-                out = tmpdir / f"{preset.value}_{res}.pdf"
-                size = _try_compress(engine, input_path, out, opts)
-
+            if size is None:
+                candidates = [c for c in (mid - 10, mid + 10, lo, hi) if lo <= c <= hi]
+                for c in candidates:
+                    opts_c = _build_target_opts(c, extra_args)
+                    out_c = tmpdir / f"r{c}.pdf"
+                    size_c = _try_compress(engine, input_path, out_c, opts_c)
+                    if size_c is not None:
+                        opts, size = opts_c, size_c
+                        break
                 if size is None:
-                    continue
+                    break
 
-                if best_size is None or size < best_size:
-                    best_opts = opts
-                    best_size = size
+            diff = abs(size - target_bytes)
+            if best_opts is None or diff < best_diff:
+                best_opts, best_size, best_diff = opts, size, diff
 
-                if size <= target_bytes:
-                    return (opts, size)
+            if abs(size - target_bytes) <= TARGET_TOLERANCE:
+                break
+
+            if size > target_bytes:
+                hi = mid - 1  # too large → lower resolution
+            else:
+                lo = mid + 1  # under target → can use higher resolution
+
+            if lo > hi:
+                break
 
         return (best_opts or [], best_size)
 
