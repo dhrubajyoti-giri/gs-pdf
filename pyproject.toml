@@ -1,0 +1,31 @@
+[project]
+name = "gs-pdf"
+version = "0.1.0"
+description = "A user-friendly CLI wrapper around Ghostscript for PDF operations"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12,<1.0",
+    "rich>=13.0,<14.0",
+    "pydantic>=2.0,<3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+gs-pdf = "gs_pdf.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gs_pdf"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "ANN", "S603", "S607", "PLR2004", "ERA001"]
+
+[tool.ruff.format]
+quote-style = "double"
