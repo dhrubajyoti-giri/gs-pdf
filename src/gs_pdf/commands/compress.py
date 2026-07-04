@@ -29,6 +29,7 @@ GS_FILTER_NAMES: dict[GsImageFilter, str] = {
 def _build_standard_opts(
     preset: GsQualityPreset,
     resolution: int,
+    jpeg_quality: int | None,
     color_image_resolution: int,
     gray_image_resolution: int,
     mono_image_resolution: int,
@@ -59,6 +60,9 @@ def _build_standard_opts(
         f"-dPDFSETTINGS=/{preset.value}",
         f"-r{resolution}",
     ]
+
+    if jpeg_quality is not None:
+        opts.append(f"-dJPEGQ={jpeg_quality}")
 
     if downsample_images or lossless:
         opts.append(f"-dDownsampleColorImages={str(not lossless).lower()}")
@@ -131,14 +135,15 @@ def _try_compress(
     return None
 
 
-def _build_target_opts(resolution: int, extra_args: list[str]) -> list[str]:
-    """Build compress options for a given resolution, matching normal defaults."""
+def _build_target_opts(jpeg_quality: int, extra_args: list[str]) -> list[str]:
+    """Build compress options for a given JPEG quality, matching normal defaults."""
     return _build_standard_opts(
         preset=GsQualityPreset.DEFAULT,
-        resolution=resolution,
-        color_image_resolution=resolution,
-        gray_image_resolution=resolution,
-        mono_image_resolution=max(resolution, 300),
+        resolution=150,
+        jpeg_quality=jpeg_quality,
+        color_image_resolution=150,
+        gray_image_resolution=150,
+        mono_image_resolution=300,
         color_image_filter=GsImageFilter.DCT,
         gray_image_filter=GsImageFilter.DCT,
         mono_image_filter=GsImageFilter.CCITT,
@@ -169,30 +174,30 @@ def _find_for_target(
     target_bytes: int,
     extra_args: list[str],
 ) -> tuple[list[str], int | None]:
-    """Binary-search resolution to find settings closest to target_bytes.
+    """Binary-search JPEG quality to find settings closest to target_bytes.
 
-    Varies only the resolution (-r flag) between 72 and 600 DPI.
-    Returns the settings that produced output closest to (but at or under) target.
+    Varies -dJPEGQ (1-100) while keeping resolution fixed at 150 DPI.
+    Returns the settings that produced output closest to target.
     """
     tmpdir = Path(tempfile.mkdtemp(prefix="gs_pdf_size_"))
-    lo, hi = 72, 600
+    lo, hi = 1, 100
     best_opts: list[str] | None = None
     best_size: int | None = None
     best_diff: float | None = None
-    TARGET_TOLERANCE = int(target_bytes * 0.05)
+    TARGET_TOLERANCE = int(target_bytes * 0.03)
 
     try:
         for _ in range(10):
             mid = (lo + hi) // 2
             opts = _build_target_opts(mid, extra_args)
-            out = tmpdir / f"r{mid}.pdf"
+            out = tmpdir / f"q{mid}.pdf"
             size = _try_compress(engine, input_path, out, opts)
 
             if size is None:
-                candidates = [c for c in (mid - 10, mid + 10, lo, hi) if lo <= c <= hi]
+                candidates = [c for c in (mid - 5, mid + 5, lo, hi) if lo <= c <= hi]
                 for c in candidates:
                     opts_c = _build_target_opts(c, extra_args)
-                    out_c = tmpdir / f"r{c}.pdf"
+                    out_c = tmpdir / f"q{c}.pdf"
                     size_c = _try_compress(engine, input_path, out_c, opts_c)
                     if size_c is not None:
                         opts, size = opts_c, size_c
@@ -208,9 +213,9 @@ def _find_for_target(
                 break
 
             if size > target_bytes:
-                hi = mid - 1  # too large → lower resolution
+                hi = mid - 1  # too large → lower quality
             else:
-                lo = mid + 1  # under target → can use higher resolution
+                lo = mid + 1  # under target → can use higher quality
 
             if lo > hi:
                 break
@@ -412,6 +417,7 @@ def cmd(
     opts = _build_standard_opts(
         preset=preset,
         resolution=resolution,
+        jpeg_quality=None,
         color_image_resolution=color_image_resolution,
         gray_image_resolution=gray_image_resolution,
         mono_image_resolution=mono_image_resolution,
