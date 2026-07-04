@@ -16,13 +16,11 @@ from gs_pdf.config import (
 from gs_pdf.engine import GsEngine
 from gs_pdf.util import detect_format_from_extension
 
-app = typer.Typer(help="Convert PDF to/from other formats")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def convert(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input file"),
     output: Path = typer.Argument(..., help="Output file"),
@@ -106,7 +104,13 @@ def convert(
         opts.append(f"-sTIFFCompression={comp_map[tiff_compression]}")
 
     if fmt == GsConvertFormat.TEXT:
-        opts.append(f"-sTextFormat=/{text_layout.value}")
+        TEXT_LAYOUT_MAP = {
+            GsTextLayout.PHYSICAL: 0,
+            GsTextLayout.PRESERVE: 1,
+            GsTextLayout.SIMPLE: 2,
+            GsTextLayout.TABLE: 3,
+        }
+        opts.append(f"-dTextFormat={TEXT_LAYOUT_MAP[text_layout]}")
 
     # For image output, use %d pattern for multi-page
     output_str = str(output)

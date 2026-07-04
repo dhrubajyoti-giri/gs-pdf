@@ -13,7 +13,6 @@ from rich.table import Table
 from gs_pdf.engine import GsEngine
 from gs_pdf.util import format_file_size
 
-app = typer.Typer(help="Show PDF metadata and information")
 console = Console()
 err_console = Console(stderr=True)
 
@@ -73,8 +72,7 @@ def _parse_bbox(stdout: str) -> list[dict[str, float]]:
     return boxes
 
 
-@app.callback(invoke_without_command=True)
-def inspect(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     verbose: bool = typer.Option(

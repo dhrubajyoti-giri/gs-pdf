@@ -9,13 +9,11 @@ from rich.console import Console
 
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Remove password protection from PDF")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def decrypt(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     output: Path = typer.Argument(..., help="Output decrypted PDF file"),

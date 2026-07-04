@@ -43,9 +43,16 @@ def pages_rotate(
     if extra:
         extra_args = extra.split()
 
-    opts: list[str] = [f"-dRotatePages={angle}"]
+    # Orientation: 0=portrait, 1=landscape(CW), 2=upside-down, 3=seascape(CCW)
+    # 90° CW → Orientation 3, 180° → 2, 270° → 1
+    orientation_map = {90: 3, 180: 2, 270: 1}
+    orientation = orientation_map[angle]
     engine = GsEngine(gs_path=gs_path, timeout=timeout)
-    args = engine.build_args("pdfwrite", [input], str(output), opts + extra_args)
+    gs = engine._find_gs()
+    args = [gs, "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER",
+            "-sDEVICE=pdfwrite", f"-sOutputFile={output}",
+            "-c", f"<</Orientation {orientation}>> setpagedevice",
+            "-f", str(input), "-c", "quit"]
 
     if ctx.obj.get("verbose"):
         console.print(f"[dim]Running: {' '.join(args)}[/dim]")

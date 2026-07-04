@@ -10,10 +10,8 @@ from rich.console import Console
 from gs_pdf.config import GsColorModel, GsRenderingIntent
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Convert PDF color space")
 console = Console()
 err_console = Console(stderr=True)
-
 
 COLOR_STRATEGIES: dict[GsColorModel, str] = {
     GsColorModel.RGB: "sRGB",
@@ -22,8 +20,7 @@ COLOR_STRATEGIES: dict[GsColorModel, str] = {
 }
 
 
-@app.callback(invoke_without_command=True)
-def color(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     output: Path = typer.Argument(..., help="Output PDF file"),
@@ -58,19 +55,28 @@ def color(
     if extra:
         extra_args = extra.split()
 
+    INTENT_MAP = {
+        GsRenderingIntent.PERCEPTUAL: 0,
+        GsRenderingIntent.RELATIVE_COLORIMETRIC: 1,
+        GsRenderingIntent.SATURATION: 2,
+        GsRenderingIntent.ABSOLUTE_COLORIMETRIC: 3,
+    }
+
+    # Determine the effective color conversion strategy
+    strategy_str: str = color_conversion_strategy
+    if to != GsColorModel.UNCHANGED and color_conversion_strategy == "LeaveColorUnchanged":
+        strategy_str = COLOR_STRATEGIES.get(to, "LeaveColorUnchanged")
+
     opts: list[str] = [
-        f"-sColorConversionStrategy={color_conversion_strategy}",
-        f"-dRenderIntent={rendering_intent.value}",
+        f"-dColorConversionStrategy=/{strategy_str}",
+        f"-dRenderIntent={INTENT_MAP[rendering_intent]}",
         f"-dPreserveOverprint={str(preserve_overprint).lower()}",
     ]
 
     if to != GsColorModel.UNCHANGED:
-        strategy = COLOR_STRATEGIES.get(to, "LeaveColorUnchanged")
-        if color_conversion_strategy == "LeaveColorUnchanged":
-            opts.append(f"-sColorConversionStrategy={strategy}")
-        # Set the process color model
-        pm = to.value.upper()
-        opts.append(f"-sProcessColorModel=Device{pm}")
+        gs_model = {"gray": "Gray", "rgb": "RGB", "cmyk": "CMYK"}
+        model_name = gs_model.get(to.value, to.value.capitalize())
+        opts.append(f"-dProcessColorModel=/Device{model_name}")
 
     if icc_profile:
         opts.append(f"-sOutputICCProfile={icc_profile}")

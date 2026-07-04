@@ -10,12 +10,10 @@ from rich.table import Table
 
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Show Ghostscript configuration")
 console = Console()
 
 
-@app.callback(invoke_without_command=True)
-def config(
+def cmd(
     ctx: typer.Context,
     json_output: bool = typer.Option(
         False, "--json", help="Output as JSON"

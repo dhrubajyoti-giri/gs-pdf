@@ -10,10 +10,8 @@ from rich.console import Console
 from gs_pdf.config import GsPdfALevel
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Convert PDF to PDF/A archival format")
 console = Console()
 err_console = Console(stderr=True)
-
 
 OUTPUT_INTENT_PROFILES: dict[str, str] = {
     "sRGB": "sRGB IEC61966-2.1",
@@ -22,13 +20,12 @@ OUTPUT_INTENT_PROFILES: dict[str, str] = {
 }
 
 
-@app.callback(invoke_without_command=True)
-def pdfa(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     output: Path = typer.Argument(..., help="Output PDF/A file"),
-    level: GsPdfALevel = typer.Option(
-        GsPdfALevel.PDFA_2, "--level", help="PDF/A conformance level"
+    level: int = typer.Option(
+        2, "--level", help="PDF/A conformance level (1, 2, or 3)"
     ),
     output_intent: str = typer.Option(
         "sRGB", "--output-intent",
@@ -62,8 +59,9 @@ def pdfa(
         f"-sColorConversionStrategy={color_conversion_strategy}",
     ]
 
-    if level.value > 1:
-        opts.append(f"-dPDFA={level.value}")
+    pdfa_level = GsPdfALevel(level) if level in (1, 2, 3) else GsPdfALevel.PDFA_2
+    if pdfa_level.value > 1:
+        opts.append(f"-dPDFA={pdfa_level.value}")
 
     # Resolve output intent profile
     intent_file: str = output_intent
@@ -84,4 +82,4 @@ def pdfa(
         err_console.print(result.stderr)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓[/green] Converted to PDF/A-{level.value}b -> [bold]{output}[/bold]")
+    console.print(f"[green]✓[/green] Converted to PDF/A-{pdfa_level.value}b -> [bold]{output}[/bold]")

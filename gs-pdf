@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""gs-pdf CLI — direct executable wrapper."""
+
+import sys
+from pathlib import Path
+
+# Add src/ to the Python path so the package is importable
+project_root = Path(__file__).resolve().parent
+src_dir = project_root / "src"
+sys.path.insert(0, str(src_dir))
+
+from gs_pdf.main import app
+
+if __name__ == "__main__":
+    app()

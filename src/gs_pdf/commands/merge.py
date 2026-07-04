@@ -9,13 +9,11 @@ from rich.console import Console
 
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Combine multiple PDFs into one")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def merge(
+def cmd(
     ctx: typer.Context,
     inputs: list[Path] = typer.Argument(..., exists=True, help="Input PDF files"),
     output: Path = typer.Argument(..., help="Output PDF file"),

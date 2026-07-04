@@ -7,13 +7,11 @@ from rich.console import Console
 
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Pass raw arguments directly to Ghostscript")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def raw(
+def cmd(
     ctx: typer.Context,
     args: list[str] = typer.Argument(
         ..., help="Raw Ghostscript arguments (everything after 'raw' is passed through)"

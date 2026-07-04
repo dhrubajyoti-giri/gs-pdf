@@ -13,13 +13,11 @@ from gs_pdf.config import (
 )
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Add password protection to PDF")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def encrypt(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     output: Path = typer.Argument(..., help="Output encrypted PDF file"),

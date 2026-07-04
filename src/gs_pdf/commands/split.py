@@ -9,13 +9,11 @@ from rich.console import Console
 
 from gs_pdf.engine import GsEngine
 
-app = typer.Typer(help="Split PDF into separate pages")
 console = Console()
 err_console = Console(stderr=True)
 
 
-@app.callback(invoke_without_command=True)
-def split(
+def cmd(
     ctx: typer.Context,
     input: Path = typer.Argument(..., exists=True, help="Input PDF file"),
     output: str = typer.Argument(
