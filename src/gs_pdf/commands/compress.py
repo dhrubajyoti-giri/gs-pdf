@@ -54,15 +54,15 @@ def _find_for_target(
 ) -> tuple[list[str], int | None]:
     """Iterate compression presets to find settings that fit under target_bytes.
 
-    Returns (best_opts, best_size) — the strongest settings that produce
+    Returns (best_opts, best_size) — the highest quality settings that produce
     output ≤ target.  If nothing fits, returns the smallest output found.
     """
     tiers: list[tuple[GsQualityPreset, list[int]]] = [
-        (GsQualityPreset.SCREEN,  [72, 100, 150, 200]),
-        (GsQualityPreset.EBOOK,   [72, 100, 150, 200]),
-        (GsQualityPreset.DEFAULT, [100, 150, 200, 300]),
-        (GsQualityPreset.PRINTER, [150, 200, 300]),
-        (GsQualityPreset.PREPRESS,[150, 200, 300]),
+        (GsQualityPreset.PREPRESS,[300, 200, 150]),
+        (GsQualityPreset.PRINTER, [300, 200, 150]),
+        (GsQualityPreset.DEFAULT, [300, 200, 150, 100]),
+        (GsQualityPreset.EBOOK,   [200, 150, 100, 72]),
+        (GsQualityPreset.SCREEN,  [200, 150, 100, 72]),
     ]
 
     tmpdir = Path(tempfile.mkdtemp(prefix="gs_pdf_size_"))
