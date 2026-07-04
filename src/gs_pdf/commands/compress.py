@@ -135,19 +135,19 @@ def _try_compress(
     return None
 
 
-def _build_target_opts(jpeg_quality: int, extra_args: list[str]) -> list[str]:
-    """Build compress options for a given JPEG quality.
+def _build_target_opts(jpeg_quality: int, resolution: int, extra_args: list[str]) -> list[str]:
+    """Build compress options for a given JPEG quality and resolution.
 
     Uses prepress preset (gentlest) without forced downsampling.
-    JPEG quality is the primary size control — higher = larger output.
+    JPEG quality is the primary size control, resolution fine-tunes.
     """
     return _build_standard_opts(
         preset=GsQualityPreset.PREPRESS,
-        resolution=150,
+        resolution=resolution,
         jpeg_quality=jpeg_quality,
-        color_image_resolution=300,
-        gray_image_resolution=300,
-        mono_image_resolution=300,
+        color_image_resolution=resolution,
+        gray_image_resolution=resolution,
+        mono_image_resolution=max(resolution, 300),
         color_image_filter=GsImageFilter.DCT,
         gray_image_filter=GsImageFilter.DCT,
         mono_image_filter=GsImageFilter.CCITT,
@@ -178,54 +178,69 @@ def _find_for_target(
     target_bytes: int,
     extra_args: list[str],
 ) -> tuple[list[str], int | None]:
-    """Binary-search JPEG quality to find settings closest to target_bytes.
+    """Two-stage search: binary-search JPEGQ, then fine-tune with resolution.
 
-    Uses prepress preset (gentlest) without forced downsampling.
-    JPEGQ (1-100) is the primary size control — lower = smaller.
+    Stage 1: Binary search -dJPEGQ (1-100) at default resolution.
+    Stage 2: Try best JPEGQ at multiple resolutions for closest match.
     Returns settings closest to target.
     """
     tmpdir = Path(tempfile.mkdtemp(prefix="gs_pdf_size_"))
-    lo, hi = 1, 100
-    best_opts: list[str] | None = None
-    best_size: int | None = None
-    best_diff: float | None = None
     TARGET_TOLERANCE = int(target_bytes * 0.03)
 
+    def _try(jq: int, res: int) -> tuple[int, list[str]] | None:
+        """Try a (jpegq, resolution) combo, return (size, opts) or None."""
+        opts = _build_target_opts(jq, res, extra_args)
+        out = tmpdir / f"q{jq}_r{res}.pdf"
+        size = _try_compress(engine, input_path, out, opts)
+        if size is not None:
+            return size, opts
+        return None
+
+    def _best_of(candidates: list[tuple[int, int]]) -> tuple[int, int, int, list[str]]:
+        """From list of (jpegq, res), return (jq, res, size, opts) closest to target."""
+        best_jq, best_res, best_size, best_opts = 0, 0, 0, []
+        for jq, res in candidates:
+            result = _try(jq, res)
+            if result is None:
+                continue
+            size, opts = result
+            if best_size == 0 or abs(size - target_bytes) < abs(best_size - target_bytes):
+                best_jq, best_res, best_size, best_opts = jq, res, size, opts
+        return best_jq, best_res, best_size, best_opts
+
     try:
+        # Stage 1: Binary search JPEGQ at resolution=150
+        lo, hi = 1, 100
         for _ in range(10):
             mid = (lo + hi) // 2
-            opts = _build_target_opts(mid, extra_args)
-            out = tmpdir / f"q{mid}.pdf"
-            size = _try_compress(engine, input_path, out, opts)
-
-            if size is None:
-                candidates = [c for c in (mid - 5, mid + 5, lo, hi) if lo <= c <= hi]
-                for c in candidates:
-                    opts_c = _build_target_opts(c, extra_args)
-                    out_c = tmpdir / f"q{c}.pdf"
-                    size_c = _try_compress(engine, input_path, out_c, opts_c)
-                    if size_c is not None:
-                        opts, size = opts_c, size_c
+            result = _try(mid, 150)
+            if result is None:
+                for c in (mid - 5, mid + 5, lo, hi):
+                    r = _try(c, 150)
+                    if r is not None:
+                        result = r
                         break
-                if size is None:
+                if result is None:
                     break
-
-            diff = abs(size - target_bytes)
-            if best_opts is None or diff < best_diff:
-                best_opts, best_size, best_diff = opts, size, diff
-
+            size, _ = result
             if abs(size - target_bytes) <= TARGET_TOLERANCE:
                 break
-
             if size > target_bytes:
-                hi = mid - 1  # too large → lower quality
+                hi = mid - 1
             else:
-                lo = mid + 1  # under target → can use higher quality
-
+                lo = mid + 1
             if lo > hi:
                 break
 
-        return (best_opts or [], best_size)
+        # Stage 2: Fine-tune with resolution around best JPEGQ
+        fine_candidates = []
+        for dq in range(-5, 6):
+            for res in [72, 100, 150, 200, 300, 600]:
+                jq = max(1, min(100, best_q + dq))
+                fine_candidates.append((jq, res))
+
+        jq, res, size, opts = _best_of(fine_candidates)
+        return (opts, size if size > 0 else None)
 
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
