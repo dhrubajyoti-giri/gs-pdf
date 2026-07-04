@@ -233,6 +233,7 @@ def _find_for_target(
                 break
 
         # Stage 2: Fine-tune with resolution around best JPEGQ
+        best_q = max(1, min(100, mid))
         fine_candidates = []
         for dq in range(-5, 6):
             for res in [72, 100, 150, 200, 300, 600]:
